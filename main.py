@@ -1,14 +1,36 @@
-"""Amazon US women's shoes operation data analysis Streamlit app."""
+"""Amazon US women's shoes operation data analysis tool.
+
+The Streamlit dashboard is preserved when dependencies are installed. In offline
+or restricted environments, run ``python main.py --self-test`` (or simply
+``python main.py`` when Streamlit is missing) to validate the core analytics
+logic without third-party packages.
+"""
 
 from __future__ import annotations
 
-from typing import Iterable
+import importlib.util
+import sys
+from collections import defaultdict
+from typing import Any, Iterable
 
-import pandas as pd
-import plotly.express as px
-import streamlit as st
+HAS_PANDAS = importlib.util.find_spec("pandas") is not None
+HAS_PLOTLY = importlib.util.find_spec("plotly") is not None
+HAS_STREAMLIT = importlib.util.find_spec("streamlit") is not None
 
-st.set_page_config(page_title="Amazon US 女鞋运营分析", page_icon="👠", layout="wide")
+if HAS_PANDAS:
+    import pandas as pd
+else:
+    pd = None
+
+if HAS_PLOTLY:
+    import plotly.express as px
+else:
+    px = None
+
+if HAS_STREAMLIT:
+    import streamlit as st
+else:
+    st = None
 
 SALES_COLUMNS = {
     "date": ["date", "日期", "purchase date", "order date"],
@@ -32,9 +54,39 @@ ADS_COLUMNS = {
     "orders": ["orders", "订单数量", "purchases"],
 }
 
+DEMO_SALES_ROWS: list[dict[str, Any]] = [
+    {"date": "2026-01-01", "asin": "B0HSANDAL1", "sku": "HS-RED-7", "product_name": "High Heel Sandals Red", "category": "高跟凉鞋", "units": 18, "sales": 899.82, "orders": 16},
+    {"date": "2026-01-08", "asin": "B0FLATSAND2", "sku": "FS-BLK-8", "product_name": "Flat Sandals Black", "category": "平底凉鞋", "units": 25, "sales": 749.75, "orders": 23},
+    {"date": "2026-01-15", "asin": "B0PUMPHEEL3", "sku": "PH-NUDE-6", "product_name": "Classic Pump Heels Nude", "category": "高跟鞋", "units": 12, "sales": 719.88, "orders": 11},
+    {"date": "2026-01-22", "asin": "B0HSANDAL1", "sku": "HS-RED-7", "product_name": "High Heel Sandals Red", "category": "高跟凉鞋", "units": 22, "sales": 1099.78, "orders": 20},
+    {"date": "2026-01-29", "asin": "B0FLATSAND2", "sku": "FS-BLK-8", "product_name": "Flat Sandals Black", "category": "平底凉鞋", "units": 30, "sales": 899.70, "orders": 28},
+    {"date": "2026-02-05", "asin": "B0PUMPHEEL3", "sku": "PH-NUDE-6", "product_name": "Classic Pump Heels Nude", "category": "高跟鞋", "units": 14, "sales": 839.86, "orders": 13},
+    {"date": "2026-02-12", "asin": "B0HSANDAL1", "sku": "HS-RED-7", "product_name": "High Heel Sandals Red", "category": "高跟凉鞋", "units": 28, "sales": 1399.72, "orders": 25},
+    {"date": "2026-02-19", "asin": "B0FLATSAND2", "sku": "FS-BLK-8", "product_name": "Flat Sandals Black", "category": "平底凉鞋", "units": 35, "sales": 1049.65, "orders": 33},
+    {"date": "2026-02-26", "asin": "B0PUMPHEEL3", "sku": "PH-NUDE-6", "product_name": "Classic Pump Heels Nude", "category": "高跟鞋", "units": 20, "sales": 1199.80, "orders": 18},
+    {"date": "2026-03-05", "asin": "B0HSANDAL1", "sku": "HS-RED-7", "product_name": "High Heel Sandals Red", "category": "高跟凉鞋", "units": 34, "sales": 1699.66, "orders": 31},
+    {"date": "2026-03-12", "asin": "B0FLATSAND2", "sku": "FS-BLK-8", "product_name": "Flat Sandals Black", "category": "平底凉鞋", "units": 41, "sales": 1229.59, "orders": 39},
+    {"date": "2026-03-19", "asin": "B0PUMPHEEL3", "sku": "PH-NUDE-6", "product_name": "Classic Pump Heels Nude", "category": "高跟鞋", "units": 24, "sales": 1439.76, "orders": 22},
+]
 
-def read_upload(uploaded_file) -> pd.DataFrame:
+DEMO_AD_ROWS: list[dict[str, Any]] = [
+    {"keyword": "womens high heel sandals", "campaign": "SP-Heel-Sandals", "impressions": 12000, "clicks": 420, "cpc": 0.82, "spend": 344.40, "ad_sales": 1680.00, "orders": 32},
+    {"keyword": "flat sandals women", "campaign": "SP-Flat-Sandals", "impressions": 18500, "clicks": 510, "cpc": 0.65, "spend": 331.50, "ad_sales": 980.00, "orders": 24},
+    {"keyword": "nude pumps women", "campaign": "SP-Pumps", "impressions": 9000, "clicks": 260, "cpc": 0.95, "spend": 247.00, "ad_sales": 1420.00, "orders": 21},
+    {"keyword": "strappy heels", "campaign": "SP-Heel-Sandals", "impressions": 7600, "clicks": 210, "cpc": 1.10, "spend": 231.00, "ad_sales": 180.00, "orders": 1},
+    {"keyword": "comfortable sandals", "campaign": "SP-Flat-Sandals", "impressions": 15000, "clicks": 390, "cpc": 0.70, "spend": 273.00, "ad_sales": 760.00, "orders": 17},
+    {"keyword": "wedding heels", "campaign": "SP-Pumps", "impressions": 6800, "clicks": 180, "cpc": 1.25, "spend": 225.00, "ad_sales": 0.00, "orders": 0},
+]
+
+
+def _require_pandas() -> None:
+    if pd is None:
+        raise RuntimeError("pandas is required for Streamlit mode. Run `python main.py --self-test` for offline validation.")
+
+
+def read_upload(uploaded_file):
     """Read a CSV/XLSX file uploaded through Streamlit."""
+    _require_pandas()
     if uploaded_file is None:
         return pd.DataFrame()
     name = uploaded_file.name.lower()
@@ -52,7 +104,7 @@ def _match_column(columns: Iterable[str], candidates: list[str]) -> str | None:
     return None
 
 
-def standardize_columns(df: pd.DataFrame, mapping: dict[str, list[str]]) -> pd.DataFrame:
+def standardize_columns(df, mapping: dict[str, list[str]]):
     """Rename common Chinese/English column names to canonical names."""
     if df.empty:
         return df
@@ -64,50 +116,79 @@ def standardize_columns(df: pd.DataFrame, mapping: dict[str, list[str]]) -> pd.D
     return df.rename(columns=renamed)
 
 
-def coerce_numeric(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+def coerce_numeric(df, columns: list[str]):
+    _require_pandas()
     for col in columns:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
     return df
 
 
-def load_example_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_example_data():
     """Return built-in demo data without requiring binary files in the repo."""
-    sales = pd.DataFrame(
-        {
-            "date": pd.date_range("2026-01-01", periods=12, freq="7D"),
-            "asin": ["B0HSANDAL1", "B0FLATSAND2", "B0PUMPHEEL3"] * 4,
-            "sku": ["HS-RED-7", "FS-BLK-8", "PH-NUDE-6"] * 4,
-            "product_name": ["High Heel Sandals Red", "Flat Sandals Black", "Classic Pump Heels Nude"] * 4,
-            "category": ["高跟凉鞋", "平底凉鞋", "高跟鞋"] * 4,
-            "units": [18, 25, 12, 22, 30, 14, 28, 35, 20, 34, 41, 24],
-            "sales": [899.82, 749.75, 719.88, 1099.78, 899.70, 839.86, 1399.72, 1049.65, 1199.80, 1699.66, 1229.59, 1439.76],
-            "orders": [16, 23, 11, 20, 28, 13, 25, 33, 18, 31, 39, 22],
-        }
-    )
-    ads = pd.DataFrame(
-        {
-            "keyword": [
-                "womens high heel sandals",
-                "flat sandals women",
-                "nude pumps women",
-                "strappy heels",
-                "comfortable sandals",
-                "wedding heels",
-            ],
-            "campaign": ["SP-Heel-Sandals", "SP-Flat-Sandals", "SP-Pumps", "SP-Heel-Sandals", "SP-Flat-Sandals", "SP-Pumps"],
-            "impressions": [12000, 18500, 9000, 7600, 15000, 6800],
-            "clicks": [420, 510, 260, 210, 390, 180],
-            "cpc": [0.82, 0.65, 0.95, 1.10, 0.70, 1.25],
-            "spend": [344.40, 331.50, 247.00, 231.00, 273.00, 225.00],
-            "ad_sales": [1680.00, 980.00, 1420.00, 180.00, 760.00, 0.00],
-            "orders": [32, 24, 21, 1, 17, 0],
-        }
-    )
-    return sales, ads
+    _require_pandas()
+    return pd.DataFrame(DEMO_SALES_ROWS), pd.DataFrame(DEMO_AD_ROWS)
 
 
-def sales_module(sales_df: pd.DataFrame) -> pd.DataFrame:
+def calculate_basic_metrics(sales_rows: list[dict[str, Any]], ad_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Calculate core metrics with the Python standard library for offline tests."""
+    sales_by_month: dict[str, dict[str, float]] = defaultdict(lambda: {"units": 0, "sales": 0.0, "orders": 0})
+    product_units: dict[str, int] = defaultdict(int)
+    for row in sales_rows:
+        month = str(row["date"])[:7]
+        sales_by_month[month]["units"] += int(row.get("units", 0))
+        sales_by_month[month]["sales"] += float(row.get("sales", 0))
+        sales_by_month[month]["orders"] += int(row.get("orders", 0))
+        product_units[str(row.get("product_name", row.get("sku", "Unknown")))] += int(row.get("units", 0))
+
+    ad_metrics = []
+    for row in ad_rows:
+        spend = float(row.get("spend", 0))
+        ad_sales = float(row.get("ad_sales", 0))
+        clicks = float(row.get("clicks", 0))
+        orders = float(row.get("orders", 0))
+        ad_metrics.append(
+            {
+                "keyword": row.get("keyword", ""),
+                "acos": spend / ad_sales * 100 if ad_sales else 0,
+                "roas": ad_sales / spend if spend else 0,
+                "conversion_rate": orders / clicks * 100 if clicks else 0,
+                "is_profitable": ad_sales > spend,
+            }
+        )
+
+    return {
+        "total_units": sum(int(row.get("units", 0)) for row in sales_rows),
+        "total_sales": sum(float(row.get("sales", 0)) for row in sales_rows),
+        "total_orders": sum(int(row.get("orders", 0)) for row in sales_rows),
+        "monthly_sales": dict(sorted(sales_by_month.items())),
+        "top_products": sorted(product_units.items(), key=lambda item: item[1], reverse=True)[:10],
+        "ad_metrics": ad_metrics,
+    }
+
+
+def run_local_data_test() -> int:
+    """Run a dependency-free smoke test for the analytics logic."""
+    metrics = calculate_basic_metrics(DEMO_SALES_ROWS, DEMO_AD_ROWS)
+    required = ["total_units", "total_sales", "total_orders", "monthly_sales", "top_products", "ad_metrics"]
+    missing = [key for key in required if key not in metrics]
+    if missing:
+        print(f"基础数据处理测试失败，缺少指标: {', '.join(missing)}")
+        return 1
+
+    print("基础数据处理测试通过")
+    print(f"总销量: {metrics['total_units']}")
+    print(f"总销售额: ${metrics['total_sales']:.2f}")
+    print(f"总订单数: {metrics['total_orders']}")
+    print(f"月份数量: {len(metrics['monthly_sales'])}")
+    print(f"TOP产品: {metrics['top_products'][0][0]} ({metrics['top_products'][0][1]} 件)")
+    print(f"广告关键词数量: {len(metrics['ad_metrics'])}")
+    if not HAS_STREAMLIT:
+        print("提示: 当前环境未安装 streamlit，已跳过页面启动。安装依赖后运行 `streamlit run main.py`。")
+    return 0
+
+
+def sales_module(sales_df):
     st.header("1. 销售数据模块")
     sales_df = standardize_columns(sales_df, SALES_COLUMNS)
     if sales_df.empty:
@@ -141,7 +222,7 @@ def sales_module(sales_df: pd.DataFrame) -> pd.DataFrame:
     return sales_df
 
 
-def ppc_module(ads_df: pd.DataFrame) -> pd.DataFrame:
+def ppc_module(ads_df):
     st.header("2. 亚马逊广告 PPC 分析模块")
     ads_df = standardize_columns(ads_df, ADS_COLUMNS)
     if ads_df.empty:
@@ -172,7 +253,7 @@ def ppc_module(ads_df: pd.DataFrame) -> pd.DataFrame:
     return ads_df
 
 
-def profit_module() -> pd.DataFrame:
+def profit_module():
     st.header("3. 利润计算模块")
     c1, c2, c3 = st.columns(3)
     price = c1.number_input("产品售价", min_value=0.0, value=49.99, step=1.0)
@@ -189,7 +270,7 @@ def profit_module() -> pd.DataFrame:
     return pd.DataFrame({"metric": ["单件利润", "利润率"], "value": [unit_profit, profit_margin]})
 
 
-def dashboard(sales_df: pd.DataFrame, ads_df: pd.DataFrame) -> None:
+def dashboard(sales_df, ads_df) -> None:
     st.header("4. 数据仪表盘")
     if not sales_df.empty and "date" in sales_df and "sales" in sales_df:
         daily = sales_df.groupby("date", as_index=False).agg(sales=("sales", "sum"), units=("units", "sum"))
@@ -204,6 +285,13 @@ def dashboard(sales_df: pd.DataFrame, ads_df: pd.DataFrame) -> None:
 
 
 def main() -> None:
+    if not (HAS_STREAMLIT and HAS_PANDAS and HAS_PLOTLY):
+        missing = [name for name, installed in {"streamlit": HAS_STREAMLIT, "pandas": HAS_PANDAS, "plotly": HAS_PLOTLY}.items() if not installed]
+        print("无法启动 Streamlit 页面，缺少依赖: " + ", ".join(missing))
+        print("可先运行 `python main.py --self-test` 验证基础数据分析逻辑。")
+        return
+
+    st.set_page_config(page_title="Amazon US 女鞋运营分析", page_icon="👠", layout="wide")
     st.title("👠 Amazon US 女鞋运营数据分析工具")
     st.caption("适用于高跟凉鞋、平底凉鞋、高跟鞋等美国站女鞋店铺运营分析。")
 
@@ -226,4 +314,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if "--self-test" in sys.argv or not HAS_STREAMLIT:
+        raise SystemExit(run_local_data_test())
     main()

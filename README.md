@@ -20,6 +20,16 @@ streamlit run main.py
 
 打开浏览器中的 Streamlit 地址后，可直接使用默认勾选的内置示例数据，也可以在侧边栏上传自己的 CSV/Excel 文件。
 
+## 离线环境测试
+
+如果运行环境无法访问 PyPI 或暂时没有安装 Streamlit/Pandas/Plotly，可先运行内置的标准库自检，验证核心数据分析逻辑：
+
+```bash
+python main.py --self-test
+```
+
+当未安装 Streamlit 时，直接执行 `python main.py` 也会自动运行基础数据处理测试，而不会因为缺少 Streamlit 直接崩溃。
+
 ## 数据字段建议
 
 ### 销售数据
